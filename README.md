@@ -34,6 +34,16 @@ that could be built completely from scratch using Drush Make as I was interested
 in doing this personally.
 
 
+More Ideas
+------------
+0. A profanity filter on the tags to try to mitigate some things
+0. A drush command with parameters for Tag, Number of items, Iterations, etc
+0. Add a vocab and case for Instagram user feeds
+0. When there are lots of Tags there can be allot of posts so you could merge the arrays of posts and then set a max number of posts per run or iteration and then only download so many posts, randomly selected per run
+0. Make the UI
+0. Make the front end nice
+
+
 Prerequisites
 ------------
 
@@ -41,7 +51,7 @@ You will need:
 
 0. Linux machine set up for Drupal development (Apache, MySQL, PHP) with internet access and root access
 0. Drush
-0. This repo checked out locally to a witable location
+0. This repo checked out locally to a writable location
 0. A local site set up called homemade.tg mapped to ./docroot (Example Vhosts config is below)
 0. A database user called "root" identified by password "Passw0rd". You could edit the ./scripts/build_2.sh, lines 20, 21, 22 to match your current user.
 
@@ -78,7 +88,7 @@ this repository eg:
 
 In the root of the repo is a file called RUNME.sh, run it from the CLI
 
-    $ sn RUNME.sh
+    $ sh RUNME.sh
 
 The site will now build and configure the default tags and complete one run of
 content gathering from Instagram.

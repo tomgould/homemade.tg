@@ -8,7 +8,7 @@
  *
  */
 define('ACCESS_TOKEN', '291857544.def1866.d7822ab2f95e42bd8a6cb6d6b8eb9d64');
-define('ITEM_COUNT', 32);
+define('ITEM_COUNT', 5);
 define('ITTERATION_COUNT', 5);
 
 function inst_import_menu() {
@@ -69,7 +69,7 @@ function inst_import_import_content() {
 }
 
 /**
- * Creates nodes form the supplied Data array and return the next data array
+ * Creates nodes form the supplied Data array and recurses
  *
  * @param type $data
  */
@@ -86,14 +86,16 @@ function inst_import_create_nodes_from_data($data) {
   foreach ($data as $tag => $tag_data) {
     $endpoints[$tag] = $tag_data['data']['pagination']['next_url'];
     $json            = $tag_data['data']['data'];
-    foreach ($json as $post) {
-      $query = db_select('node', 'n');
-      $query->addField('n', 'nid');
-      $query->condition('n.title', $post['id']);
-      $nid   = $query->execute()->fetchField();
-      if (empty($nid)) {
-        inst_import_make_node($post, $tag);
-        $new_node_count++;
+    if (!empty($json)) {
+      foreach ($json as $post) {
+        $query = db_select('node', 'n');
+        $query->addField('n', 'nid');
+        $query->condition('n.title', $post['id']);
+        $nid   = $query->execute()->fetchField();
+        if (empty($nid)) {
+          inst_import_make_node($post, $tag);
+          $new_node_count++;
+        }
       }
     }
   }
@@ -136,7 +138,9 @@ function inst_import_get_data_array($endpoints) {
  */
 function inst_import_get_json($endpoint) {
   $response = drupal_http_request($endpoint);
-  return json_decode($response->data, TRUE);
+  if (!empty($response->data)) {
+    return json_decode($response->data, TRUE);
+  }
 }
 
 /**
@@ -164,7 +168,7 @@ function inst_import_make_node($post, $tag) {
   // Maps the tag to the term ID in the vocab
   inst_import_term_mapper($node, $tag, 'tags', 'field_inst_tag');
 
-  // Som fields
+  // Some fields
   $node->field_inst_img_url[LANGUAGE_NONE][0]['value']      = $post['images']['standard_resolution']['url'];
   $node->field_inst_link[LANGUAGE_NONE][0]['value']         = $post['link'];
   $node->field_inst_username[LANGUAGE_NONE][0]['value']     = $post['user']['username'];
@@ -261,7 +265,7 @@ function inst_import_download_external_file($url, $uri, $save_mode = FILE_EXISTS
 
 /**
  * Populates or unsets the taxonomy field on the node based on the lookup
- * by name of the tid from the source node.
+ * by name of the tid from the source tag.
  *
  * @param object $node
  * @param string $tag
@@ -280,7 +284,7 @@ function inst_import_term_mapper(&$node, $tag, $vocab, $field) {
 }
 
 /**
- * Prepares and empty node object
+ * Prepares an empty node object
  *
  * @param string $type
  *    The machine name of the node to prepare
@@ -302,15 +306,4 @@ function inst_import_get_empty_node($type) {
   node_object_prepare($node);
 
   return $node;
-}
-
-/**
- * Truncates a table
- *
- * @param string $table
- */
-function inst_import_truncate($table) {
-  echo "Truncating $table\n";
-
-  db_query('TRUNCATE TABLE ' . $table);
 }
