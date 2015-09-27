@@ -35,7 +35,4 @@ projects[token][version] = "1.6"
 projects[views][subdir] = "contrib"
 projects[views][version] = "3.11"
 
-; Themes
-projects[rubik][version] = "4.2"
-projects[tao][version] = "3.1"
 
