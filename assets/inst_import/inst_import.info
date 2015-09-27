@@ -1,0 +1,4 @@
+name = Instagram Import
+description = Imports posts from Instagram to Drupal nodes
+core = 7.x
+package = Tom Gould

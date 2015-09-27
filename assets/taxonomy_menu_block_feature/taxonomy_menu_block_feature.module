@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the Taxonomy Menu Block Feature feature.
+ */
+
+include_once 'taxonomy_menu_block_feature.features.inc';

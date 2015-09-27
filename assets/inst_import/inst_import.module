@@ -1,0 +1,316 @@
+<?php
+
+/**
+ * @file
+ *   Main module file, Imports posts from Instagram
+ *
+ *   Change the CONSTs below to alter the behaviour
+ *
+ */
+define('ACCESS_TOKEN', '291857544.def1866.d7822ab2f95e42bd8a6cb6d6b8eb9d64');
+define('ITEM_COUNT', 32);
+define('ITTERATION_COUNT', 5);
+
+function inst_import_menu() {
+  $items['test'] = array(
+    'title'            => t('For Debugging'),
+    'page callback'    => 'inst_import_test',
+    'access arguments' => array('Administer Instagram Import'),
+    'type'             => MENU_NORMAL_ITEM,
+  );
+
+  return $items;
+}
+
+/**
+ * Implementation of hook_permission().
+ */
+function inst_import_permission() {
+  $permissions['Administer Instagram Import'] = array(
+    'title' => t('Administer Instagram Import'),
+  );
+  return $permissions;
+}
+
+/**
+ * For degbugging
+ *
+ * @return type
+ */
+function inst_import_test() {
+  // return inst_import_import_content();
+
+  return drupal_access_denied();
+  die;
+}
+
+/**
+ * Implements hook_cron
+ */
+function inst_import_cron() {
+  inst_import_import_content();
+}
+
+/**
+ * Imports all the posts
+ */
+function inst_import_import_content() {
+  $tags = taxonomy_get_tree(1);
+
+  $endpoints = array();
+  foreach ($tags as $tag) {
+    $name             = $tag->name;
+    $endpoints[$name] = "https://api.instagram.com/v1/tags/$name/media/recent?access_token=" . ACCESS_TOKEN . "&count=" . ITEM_COUNT;
+  }
+
+  $data = inst_import_get_data_array($endpoints);
+
+  inst_import_create_nodes_from_data($data);
+}
+
+/**
+ * Creates nodes form the supplied Data array and return the next data array
+ *
+ * @param type $data
+ */
+function inst_import_create_nodes_from_data($data) {
+  static $new_node_count;
+  static $itteration_count;
+  if (empty($new_node_count)) {
+    $new_node_count = 0;
+  }
+  if (empty($itteration_count)) {
+    $itteration_count = 0;
+  }
+  $endpoints = array();
+  foreach ($data as $tag => $tag_data) {
+    $endpoints[$tag] = $tag_data['data']['pagination']['next_url'];
+    $json            = $tag_data['data']['data'];
+    foreach ($json as $post) {
+      $query = db_select('node', 'n');
+      $query->addField('n', 'nid');
+      $query->condition('n.title', $post['id']);
+      $nid   = $query->execute()->fetchField();
+      if (empty($nid)) {
+        inst_import_make_node($post, $tag);
+        $new_node_count++;
+      }
+    }
+  }
+  $itteration_count++;
+
+  if ($itteration_count < ITTERATION_COUNT) {
+    $data = inst_import_get_data_array($endpoints);
+    inst_import_create_nodes_from_data($data);
+  }
+  else {
+    watchdog('Instagram Import', check_plain("Imported $new_node_count posts "
+            . " in $itteration_count itterations for these tags: "
+            . implode(', ', array_keys($endpoints))));
+  }
+}
+
+/**
+ * Returns an array of data from the array of endpoints
+ *
+ * @param array $endpoints
+ */
+function inst_import_get_data_array($endpoints) {
+  $data = array();
+  foreach ($endpoints as $tag => $endpoint) {
+    $data[$tag] = array(
+      'endpoint' => $endpoint,
+      'data'     => inst_import_get_json($endpoint),
+    );
+  }
+
+  return $data;
+}
+
+/**
+ * Gets the JSON and returns the data as an object
+ *
+ * @param string $endpoint
+ *
+ * @return array
+ */
+function inst_import_get_json($endpoint) {
+  $response = drupal_http_request($endpoint);
+  return json_decode($response->data, TRUE);
+}
+
+/**
+ * Creates a advert node
+ *
+ * @param object $source
+ */
+function inst_import_make_node($post, $tag) {
+
+  global $user, $language;
+  $user = user_load(1);
+
+  // Creates an empty node of the given type
+  $node = inst_import_get_empty_node('instagram_item');
+
+  $node->status = 1;
+
+  // Set the unique ID as the node title so it's easy to check for an existing
+  // instance of the post in the node table
+  $node->title = $post['id'];
+
+  // Maps an image to the node fromnm a URL
+  inst_import_attach_file_from_url($node, 'field_inst_image', $post['images']['standard_resolution']['url']);
+
+  // Maps the tag to the term ID in the vocab
+  inst_import_term_mapper($node, $tag, 'tags', 'field_inst_tag');
+
+  // Som fields
+  $node->field_inst_img_url[LANGUAGE_NONE][0]['value']      = $post['images']['standard_resolution']['url'];
+  $node->field_inst_link[LANGUAGE_NONE][0]['value']         = $post['link'];
+  $node->field_inst_username[LANGUAGE_NONE][0]['value']     = $post['user']['username'];
+  $node->field_inst_created_time[LANGUAGE_NONE][0]['value'] = $post['caption']['created_time'];
+  $node->field_inst_json[LANGUAGE_NONE][0]['value']         = json_encode($post);
+
+
+  // Saves the node
+  node_save($node);
+
+  return $node;
+}
+
+/**
+ * Downloads and attaches the remote files to the local node
+ *
+ * @param object $node
+ * @param object $source
+ * @param string $local_name
+ * @param string $source_name
+ */
+function inst_import_attach_file_from_url(&$node, $local_name, $url) {
+  $info = field_info_instance('node', $local_name, $node->type);
+  if (!empty($url)) {
+
+    $args     = explode('/', $url);
+    $filename = end($args);
+    if (mb_strpos($filename, '?') !== FALSE) {
+      $filename = mb_substr($filename, 0, mb_strpos($filename, '?'));
+    }
+
+    if (strlen(trim($info['settings']['file_directory'])) > 0) {
+      $final_path = 'public://' . $info['settings']['file_directory'] . '/' . $filename;
+    }
+    else {
+      $final_path = 'public://' . $filename;
+    }
+
+    $node->{$local_name}[LANGUAGE_NONE][0] = inst_import_download_external_file(
+        $url, $final_path);
+  }
+  else {
+    $node->{$local_name}[LANGUAGE_NONE] = array();
+  }
+}
+
+/**
+ * Saves a remote file to the DB and file system
+ *
+ * param string $url
+ *    Full url to file to download
+ * param string $uri
+ *    Drupal uri of where to save file public://archive/test.pdf
+ * param int $save_mode
+ *    File save mode from drupal core, ex FILE_EXISTS_REPLACE
+ */
+function inst_import_download_external_file($url, $uri, $save_mode = FILE_EXISTS_RENAME, $manage_file = TRUE) {
+
+  $url_info      = parse_url($url);
+  $url_path_info = pathinfo($url_info['path']);
+
+  //This helps with filenames with spaces
+  $url = $url_info['scheme'] . '://' . $url_info['host'] . $url_path_info['dirname'] . '/' . rawurlencode($url_path_info['basename']);
+
+  //Need to remove the filename from the uri
+  $uri_target    = file_uri_target($uri);
+  $uri_scheme    = file_uri_scheme($uri);
+  $uri_path_info = pathinfo($uri_target);
+  $directory     = file_stream_wrapper_uri_normalize($uri_scheme . "://" . $uri_path_info['dirname']);
+
+  if (file_prepare_directory($directory, FILE_CREATE_DIRECTORY)) {
+    $drupal_result = drupal_http_request($url);
+    if (!empty($drupal_result->data)) {
+      $path = file_stream_wrapper_uri_normalize($uri);
+      if ($manage_file) {
+        $new_file = file_save_data($drupal_result->data, $path, $save_mode);
+      }
+      else {
+        return file_unmanaged_save_data($drupal_result->data, $path, $save_mode);
+      }
+    }
+    else {
+      drupal_set_message("Error downloading file, no data recieved for " . $url);
+      return FALSE;
+    }
+
+    $new_file->display = 1;
+    return (array) $new_file;
+  }
+  else {
+    drupal_set_message("Could not create directory");
+  }
+}
+
+/**
+ * Populates or unsets the taxonomy field on the node based on the lookup
+ * by name of the tid from the source node.
+ *
+ * @param object $node
+ * @param string $tag
+ * @param string $vocab (local vocabulary name)
+ * @param string $field (local field name)
+ */
+function inst_import_term_mapper(&$node, $tag, $vocab, $field) {
+  if (!empty($tag)) {
+    $new_term                                = taxonomy_get_term_by_name($tag, $vocab);
+    $tid                                     = empty($new_term) ? NULL : key($new_term);
+    $node->{$field}[LANGUAGE_NONE][0]['tid'] = empty($tid) ? NULL : $tid;
+  }
+  if (empty($node->{$field}[LANGUAGE_NONE][0]['tid'])) {
+    unset($node->{$field});
+  }
+}
+
+/**
+ * Prepares and empty node object
+ *
+ * @param string $type
+ *    The machine name of the node to prepare
+ *
+ * @return \stdClass
+ */
+function inst_import_get_empty_node($type) {
+  global $language;
+
+  $node           = new stdClass();
+  $node->uid      = 1;
+  $node->name     = 'admin';
+  $node->status   = 0;
+  $node->promote  = 1;
+  $node->language = $language->language;
+
+  $node->type = $type;
+
+  node_object_prepare($node);
+
+  return $node;
+}
+
+/**
+ * Truncates a table
+ *
+ * @param string $table
+ */
+function inst_import_truncate($table) {
+  echo "Truncating $table\n";
+
+  db_query('TRUNCATE TABLE ' . $table);
+}

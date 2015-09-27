@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the Instagram Item Feature feature.
+ */
+
+include_once 'instagram_item_feature.features.inc';

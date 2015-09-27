@@ -1,0 +1,14 @@
+name = Taxonomy Menu Block Feature
+core = 7.x
+package = Features
+php = 5.2.4
+dependencies[] = fe_block
+dependencies[] = strongarm
+dependencies[] = taxonomy_menu_block
+features[ctools][] = strongarm:strongarm:1
+features[fe_block_settings][] = taxonomy_menu_block-1
+features[features_api][] = api:1
+features[variable][] = field_bundle_settings_taxonomy_term__tags
+features[variable][] = taxonomy_menu_block_1
+features[variable][] = taxonomy_menu_block_ids
+mtime = 1443283132
