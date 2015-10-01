@@ -33,6 +33,31 @@ function inst_import_permission() {
 }
 
 /**
+ * Implements hook_preprocess_page()
+ *
+ * @param array $vars
+ */
+function inst_import_preprocess_page(&$vars) {
+  // Cheap and nasty way to display the tags and caption
+  if (!empty($vars['node'])) {
+    $replaces_title = "
+(function($) {
+    var post = JSON.parse(jQuery('div.field.field-name-field-inst-json .field-items .field-item').html());
+    $('.field-name-field-inst-image').append('<h4>Tags</h4><p>' + post.tags.join(', ') + '</p>');
+    $('.field-name-field-inst-image').append('<h4>Caption</h4><p>' + post.caption.text + '</p>');
+})(jQuery);";
+
+    drupal_add_js(
+      $replaces_title, array(
+      'type'   => 'inline',
+      'scope'  => 'footer',
+      'weight' => 100,
+      )
+    );
+  }
+}
+
+/**
  * For degbugging
  *
  * @return type
